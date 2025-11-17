@@ -30,8 +30,6 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         return user
     
-    
-
 
 # 로그인용 시리얼라이저
 class AuthSerializer(serializers.ModelSerializer):

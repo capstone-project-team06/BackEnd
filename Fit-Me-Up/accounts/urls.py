@@ -10,4 +10,5 @@ urlpatterns = [
   
     path("join/", RegisterView.as_view()),
     path("login/", AuthView.as_view()), 
+    path("info/",UserInfoView.as_view()),
 ]

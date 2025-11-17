@@ -1,8 +1,13 @@
-from rest_framework_simplejwt.serializers import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .serializers import RegisterSerializer, AuthSerializer
-from rest_framework import status
+from rest_framework import status, permissions
+
+from django.contrib.auth import get_user_model
+from onboarding.models import Onboarding
+from onboarding.serializers import OnboardingSerializer
+
 
 class RegisterView(APIView):
     def post(self, request):
@@ -48,7 +53,6 @@ class AuthView(APIView):
                     "user": {
                         "id": user.id,
                         "username": user.username,
-                        "email": user.email,
                     },
                     "message": "login success!",
                     "token": {
@@ -66,3 +70,26 @@ class AuthView(APIView):
         # 유효성 검사 실패 시 오류 반환
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+class UserInfoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        try:
+            onboarding = user.onboarding
+            onboarding_data = OnboardingSerializer(onboarding).data
+        except Onboarding.DoesNotExist:
+            onboarding_data = None
+
+        data = {
+            "id": user.id,
+            "username": user.username,
+            "gender": getattr(user, "gender", None),
+            "age": getattr(user, "age", None),
+            "height_cm": getattr(user, "height_cm", None),
+            "weight_kg": getattr(user, "weight_kg", None),
+            "onboarding": onboarding_data,
+        }
+
+        return Response(data, status=status.HTTP_200_OK)

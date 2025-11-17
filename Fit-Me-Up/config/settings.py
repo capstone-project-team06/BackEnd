@@ -58,6 +58,7 @@ DJANGO_APPS = [
 
 PROJECT_APPS = [
     'accounts',
+    'onboarding',
 ]
 
 THIRD_PARTY_APPS = [ 
