@@ -14,6 +14,9 @@ from pathlib import Path
 import os, json
 from django.core.exceptions import ImproperlyConfigured
 from datetime import timedelta
+import pymysql
+pymysql.install_as_MySQLdb()
+
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -59,13 +62,19 @@ DJANGO_APPS = [
 PROJECT_APPS = [
     'accounts',
     'onboarding',
+    'celebrity',
+    'clothes',
+    'recommendation',
 ]
 
 THIRD_PARTY_APPS = [ 
     "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
+    'storages',
+
 ]
+
 
 
 INSTALLED_APPS = DJANGO_APPS + PROJECT_APPS + THIRD_PARTY_APPS
@@ -99,17 +108,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
-
-
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
 
 
 # Password validation
@@ -184,3 +182,45 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,
     'TOKEN_USER_CLASS': 'accounts.User',
 }
+
+DB_PW_LOCAL = get_secret("DB_PW_LOCAL")
+
+# DATABASES = {
+# 	'default': {
+# 		'ENGINE': 'django.db.backends.mysql',
+# 		'NAME': 'FitMeUp',
+# 		'USER': 'root', # root로 접속하여 DB를 만들었다면 'root'
+# 		'PASSWORD': DB_PW_LOCAL, # 비밀번호는 secrets.json에 저장
+# 		'HOST': 'localhost',
+# 		'PORT': '3306',
+# 	}
+# }
+
+DB_PW_TUNNEL = get_secret("DB_PW_TUNNEL")
+
+# 원격 연결용
+DATABASES = {
+	'default': {
+		'ENGINE': 'django.db.backends.mysql',
+		'NAME': "fit_me_up",
+		'USER': "admin", # aws에서 만든 사용자명
+		'PASSWORD': DB_PW_TUNNEL, # 비밀번호는 secrets.json에 저장
+		'HOST': "127.0.0.1",
+		'PORT': '3307', # 터널에서 연결할 로컬 포트
+	}
+}
+
+###AWS###
+AWS_ACCESS_KEY_ID = get_secret("AWS_ACCESS_KEY_ID") # .csv 파일에 있는 내용을 입력 Access key ID. IAM 계정 관련
+AWS_SECRET_ACCESS_KEY = get_secret("AWS_SECRET_ACCESS_KEY") # .csv 파일에 있는 내용을 입력 Secret access key. IAM 계정 관련
+AWS_REGION = 'ap-northeast-2'
+
+###S3###
+AWS_STORAGE_BUCKET_NAME = 'fit-me-up-s3bucket'
+AWS_S3_CUSTOM_DOMAIN = '%s.s3.%s.amazonaws.com' % (AWS_STORAGE_BUCKET_NAME,AWS_REGION)
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+
+# 기본 파일 스토리지를 S3로 설정
+DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
