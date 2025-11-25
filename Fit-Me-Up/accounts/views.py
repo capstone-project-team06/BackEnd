@@ -1,12 +1,19 @@
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from .serializers import RegisterSerializer, AuthSerializer
+from .serializers import RegisterSerializer, AuthSerializer, UserImageSerializer
 from rest_framework import status, permissions
 
 from django.contrib.auth import get_user_model
 from onboarding.models import Onboarding
 from onboarding.serializers import OnboardingSerializer
+from .models import UserImage
+
+import os
+import uuid
+import boto3
+from django.conf import settings
+
 
 
 class RegisterView(APIView):
@@ -93,3 +100,93 @@ class UserInfoView(APIView):
         }
 
         return Response(data, status=status.HTTP_200_OK)
+    
+
+class UserImageUploadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        # 파일 유무 확인
+        if "image" not in request.FILES:
+            return Response({"error": "No image file"}, status=status.HTTP_400_BAD_REQUEST)
+
+        image_file = request.FILES["image"]
+
+        # image_type(FACE/BODY) 같이 받기
+        image_type = request.data.get("image_type")
+        if image_type not in ["FACE", "BODY"]:
+            return Response(
+                {"error": "image_type must be FACE or BODY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # S3 클라이언트 생성
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_REGION,
+        )
+
+        # 파일 확장자
+        _, ext = os.path.splitext(image_file.name)
+        ext = ext or ".jpg"
+
+        # S3에 저장할 경로 (user별 디렉토리)
+        file_name = f"{uuid.uuid4()}{ext}"
+        file_path = f"uploads/user/{user.id}/{file_name}"
+
+        # S3 업로드
+        try:
+            s3_client.put_object(
+                Bucket=settings.AWS_STORAGE_BUCKET_NAME,
+                Key=file_path,
+                Body=image_file.read(),
+                ContentType=image_file.content_type,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"S3 Upload Failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # 업로드된 파일의 S3 URL
+        image_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{file_path}"
+
+        # DB에 저장
+        image_instance = UserImage.objects.create(
+            user=user,
+            image_url=image_url,
+            image_type=image_type,
+        )
+        serializer = UserImageSerializer(image_instance)
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+
+class UserImageListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        image = UserImage.objects.filter(user=user)
+
+        data = [
+            {
+                "image_type": img.image_type,   # FACE / BODY
+                "image_url": img.image_url,     # S3 URL
+                "created_at": img.created_at,
+            }
+            for img in image
+        ]
+
+        return Response(
+            {
+                "user_id": user.id,
+                "images": data,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -1,6 +1,8 @@
 from rest_framework import serializers          # Serializer 관련 기본 클래스
 from django.contrib.auth import get_user_model  # User 모델 가져오기 (CustomUser 대응)
 from rest_framework_simplejwt.tokens import RefreshToken  # JWT 토큰 생성용
+from .models import UserImage
+
 
 from .models import User 
 
@@ -69,3 +71,9 @@ class AuthSerializer(serializers.ModelSerializer):
         }
 
         return data
+    
+
+class UserImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserImage
+        fields = "__all__"
