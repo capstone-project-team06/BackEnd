@@ -175,3 +175,4 @@ cython_debug/
 
 secrets.json
 Fit-me-up-key.pem
+.DS_Store

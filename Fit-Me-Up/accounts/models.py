@@ -4,7 +4,9 @@ from django.contrib.auth.models import AbstractUser
 
 # Create your models here.
 class User(AbstractUser):
+    username = None
     name = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(max_length=50, unique=True)
 
     GENDER_CHOICES = (
         ("M", "Male"),
@@ -22,13 +24,11 @@ class User(AbstractUser):
     height_cm = models.PositiveIntegerField(null=True, blank=True)
     weight_kg = models.PositiveIntegerField(null=True, blank=True)
     
-    # 모델 함수
-    @staticmethod
-    def get_user_by_username(username):
-        try:
-            return User.objects.get(username=username)
-        except Exception:
-            return None
+    USERNAME_FIELD = "email"   # 🔥 로그인 ID로 사용할 필드
+    REQUIRED_FIELDS = []       # createsuperuser 할 때 추가로 필수로 받을 필드 목록 (email은 자동)
+
+    def __str__(self):
+        return self.email
         
 
 class UserImage(models.Model):
@@ -49,4 +49,4 @@ class UserImage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Image of {self.user.username} ({self.image_type})"
+        return f"Image of {self.user.name} ({self.image_type})"
