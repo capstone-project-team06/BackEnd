@@ -23,9 +23,11 @@ class User(AbstractUser):
 
     height_cm = models.PositiveIntegerField(null=True, blank=True)
     weight_kg = models.PositiveIntegerField(null=True, blank=True)
+    styles = models.JSONField(null=True, blank=True)
+
     
-    USERNAME_FIELD = "email"   # 🔥 로그인 ID로 사용할 필드
-    REQUIRED_FIELDS = []       # createsuperuser 할 때 추가로 필수로 받을 필드 목록 (email은 자동)
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = [] 
 
     def __str__(self):
         return self.email

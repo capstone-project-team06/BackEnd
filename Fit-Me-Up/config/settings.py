@@ -61,7 +61,6 @@ DJANGO_APPS = [
 
 PROJECT_APPS = [
     'accounts',
-    'onboarding',
     'celebrity',
     'clothes',
     'recommendation',
