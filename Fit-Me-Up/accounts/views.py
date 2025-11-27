@@ -14,9 +14,13 @@ import uuid
 import boto3
 from django.conf import settings
 
+from rest_framework.permissions import AllowAny
+
 
 
 class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []       
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
@@ -46,6 +50,8 @@ class RegisterView(APIView):
         
 
 class AuthView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
     def post(self, request):
         serializer = AuthSerializer(data=request.data)
 
