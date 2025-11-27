@@ -48,24 +48,24 @@ class RegisterView(APIView):
 class AuthView(APIView):
     def post(self, request):
         serializer = AuthSerializer(data=request.data)
-        
-        # 유효성 검사
+
         if serializer.is_valid(raise_exception=True):
-            user = serializer.validated_data['user']
-            access_token = serializer.validated_data['access_token']
-            refresh_token = serializer.validated_data['refresh_token']
+            user = serializer.validated_data["user"]
+            access_token = serializer.validated_data["access_token"]
+            refresh_token = serializer.validated_data["refresh_token"]
 
             res = Response(
                 {
                     "user": {
                         "id": user.id,
-                        "username": user.username,
+                        "email": user.email,
+                        "name": user.name,
                     },
                     "message": "login success!",
                     "token": {
                         "access_token": access_token,
                         "refresh_token": refresh_token,
-                    }, 
+                    },
                 },
                 status=status.HTTP_200_OK,
             )
@@ -73,10 +73,6 @@ class AuthView(APIView):
             res.set_cookie("access_token", access_token, httponly=True)
             res.set_cookie("refresh_token", refresh_token, httponly=True)
             return res
-        
-        # 유효성 검사 실패 시 오류 반환
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
 class UserInfoView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -91,7 +87,8 @@ class UserInfoView(APIView):
 
         data = {
             "id": user.id,
-            "username": user.username,
+            "email": user.email,
+            "name": user.name,
             "gender": getattr(user, "gender", None),
             "age": getattr(user, "age", None),
             "height_cm": getattr(user, "height_cm", None),
