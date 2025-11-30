@@ -1,7 +1,8 @@
 from django.urls import path
-from .views import RecommendationFromAIView, RecommendationView
+from .views import *
 
 urlpatterns = [
-    path("create/", RecommendationFromAIView.as_view(), name="recommendation-from-ai"),
-    path("", RecommendationView.as_view(), name="recommendation"),
+    path("requests/", RecommendationRequestView.as_view(), name="recommendation-requests"),
+    path("final/", RecommendStyleFromCelebrityView.as_view(), name="recommend-style-from-celeb"),
+    path("celebrity-look/", CelebrityStyleOnlyView.as_view(), name="celebrity-style-only"),
 ]

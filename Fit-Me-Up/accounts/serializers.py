@@ -1,7 +1,7 @@
 from rest_framework import serializers          # Serializer 관련 기본 클래스
 from django.contrib.auth import get_user_model  # User 모델 가져오기 (CustomUser 대응)
 from rest_framework_simplejwt.tokens import RefreshToken  # JWT 토큰 생성용
-from .models import UserImage
+from .models import *
 
 
 from .models import User 
@@ -12,7 +12,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["email", "password", "name", "gender", "age", "height_cm", "weight_kg"]
+        fields = ["email", "password", "name", "gender", "age", "height_cm", "weight_kg","styles"]
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -55,3 +55,22 @@ class UserImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserImage
         fields = "__all__"
+
+
+class UserAnalysisSerializer(serializers.ModelSerializer):
+    # nested로 보고 싶으면 이렇게, 아니면 PrimaryKeyRelatedField로 바꿔도 됨
+    face_image = UserImageSerializer()
+    body_image = UserImageSerializer()
+
+    class Meta:
+        model = UserAnalysis
+        fields = (
+            "user",
+            "face_image",
+            "body_image",
+            "face_shape",
+            "body_shape",
+            "skin_tone",
+            "vector",
+            "updated_at",
+        )
