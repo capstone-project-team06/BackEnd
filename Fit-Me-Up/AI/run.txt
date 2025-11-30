@@ -1,0 +1,29 @@
+# 1) (선택) 가상환경
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+###conda 사용 시
+conda create -n style-pipeline python=3.10 -y
+conda activate style-pipeline
+
+# 2) 의존성 설치
+pip install -r requirements.txt
+
+# 3) 개별 모듈 테스트
+python scripts/test_face.py  /path/to/upperbody.jpg
+python scripts/test_body.py  /path/to/fullbody.jpg
+python scripts/test_skin.py  /path/to/face.jpg
+python -m scripts.test_face "data\Humans\1_1.jpg" --out "outputs\face_debug.png"
+
+# 4) 추천만 테스트 (환경변수 키 필요)
+export OPENAI_API_KEY="sk-..."   # Windows: set OPENAI_API_KEY=...
+python scripts/test_recommend.py --face oval --body rectangle --skin light_warm --top "화이트 셔츠" --bottom "네이비 치노"
+
+# 5) API 서버 실행
+uvicorn app.api.app:app --reload --port 8000
+
+# 엔드포인트
+# POST /face        (file: image)
+# POST /body        (file: image)
+# POST /skin        (file: image)
+# POST /recommend   (form: face_shape, body_shape, skin_tone, [top], [bottom])
+# POST /analyze     (file: image, [top], [bottom])

@@ -1,0 +1,43 @@
+﻿# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+style-pipeline/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs / Outputs
+*.log
+outputs/
+
+# Dataset (ignore all images but keep folder)
+*.zip
+data/*
+data/Humans/*
+data/Humans.zip
+!data/Humans/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+.env 
+
+# Secrets / API keys
+.env
+*.env
+ 
+ 
