@@ -223,3 +223,6 @@ AWS_S3_OBJECT_PARAMETERS = {
 
 # 기본 파일 스토리지를 S3로 설정
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
+# AI 서버 URL (FastAPI)
+AI_SERVER_URL = "http://127.0.0.1:8001"  # 실제 AI 서버 포트에 맞게 수정

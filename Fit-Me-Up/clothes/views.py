@@ -1,6 +1,7 @@
 import uuid
 import os
 import boto3
+import requests
 
 from django.conf import settings
 from rest_framework.views import APIView
@@ -20,8 +21,10 @@ class ClothesCreateView(APIView):
         image_file = request.FILES.get("image")
 
         if not name or not shop_link:
-            return Response({"error": "name, shop_link는 필수입니다."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "name, shop_link는 필수입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         image_url = None
         if image_file:
@@ -50,12 +53,14 @@ class ClothesCreateView(APIView):
         clothes = Clothes.objects.create(
             name=name,
             shop_link=shop_link,
-            image_url=image_url
+            image_url=image_url,
         )
 
-        return Response(ClothesSerializer(clothes).data,
-                        status=status.HTTP_201_CREATED)
-    
+        return Response(
+            ClothesSerializer(clothes).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class ClothesListView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -64,27 +69,68 @@ class ClothesListView(APIView):
         items = Clothes.objects.all()
         serializer = ClothesSerializer(items, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
 
-class ClothesAnalysisUpdateView(APIView):
+
+class ClothesBatchAnalyzeView(APIView):
+
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, pk):
-        try:
-            clothes = Clothes.objects.get(pk=pk)
-        except Clothes.DoesNotExist:
-            return Response({"error": "Clothes not found"}, status=404)
+    def post(self, request):
+        # ?force=true 이면 이미 분석된 것도 포함
+        force = request.query_params.get("force") == "true"
 
-        analysis, created = ClothesAnalysis.objects.get_or_create(clothes=clothes)
+        qs = Clothes.objects.all()
+        if not force:
+            qs = qs.filter(analysis__isnull=True)
 
-        serializer = ClothesAnalysisSerializer(
-            analysis,
-            data=request.data,
-            partial=True,
+        # image_url 없는 건 스킵
+        qs = qs.exclude(image_url__isnull=True).exclude(image_url="")
+
+        processed = []
+        failed = []
+
+        for c in qs:
+            try:
+                ai_resp = requests.post(
+                    f"{settings.AI_SERVER_URL}/ai/clothes/analyze",
+                    json={
+                        "clothes_id": c.id,
+                        "name": c.name,
+                        "image_url": c.image_url,
+                    },
+                    timeout=120,
+                )
+                ai_resp.raise_for_status()
+                ai_json = ai_resp.json()
+
+                ClothesAnalysis.objects.update_or_create(
+                    clothes=c,
+                    defaults={
+                        "category": ai_json.get("category"),
+                        "sub_category": ai_json.get("sub_category"),
+                        "style": ai_json.get("style"),
+                        "color": ai_json.get("color"),
+                        "fit": ai_json.get("fit"),
+                        "season": ai_json.get("season"),
+                        "vector": ai_json.get("vector"),
+                    },
+                )
+                processed.append(c.id)
+
+            except Exception as e:
+                failed.append(
+                    {
+                        "id": c.id,
+                        "name": c.name,
+                        "error": str(e),
+                    }
+                )
+
+        return Response(
+            {
+                "processed_ids": processed,
+                "failed": failed,
+                "force": force,
+            },
+            status=status.HTTP_200_OK,
         )
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=200)
-
-        return Response(serializer.errors, status=400)

@@ -9,7 +9,12 @@ class Celebrity(models.Model):
 
     name = models.CharField(max_length=100)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
-    image_url = models.URLField(max_length=500, blank=True, null=True)
+
+    # 얼굴 사진 URL
+    face_image_url = models.URLField(max_length=500, blank=True, null=True)
+
+    # 전신 사진 URL
+    body_image_url = models.URLField(max_length=500, blank=True, null=True)
 
     def __str__(self):
         return f"{self.name} ({self.get_gender_display()})"
