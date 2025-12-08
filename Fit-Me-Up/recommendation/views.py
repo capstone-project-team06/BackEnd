@@ -245,8 +245,10 @@ class RecommendStyleFromCelebrityView(APIView):
             ai_resp.raise_for_status()
             ai_json = ai_resp.json()
         except Exception as e:
-            return Response({"detail": "AI 호출 실패", "error": str(e)},
-                            status=status.HTTP_502_BAD_GATEWAY)
+            return Response(
+                {"detail": "AI 호출 실패", "error": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         looks = ai_json.get("looks") or []
         summary = ai_json.get("summary", "")
@@ -259,6 +261,7 @@ class RecommendStyleFromCelebrityView(APIView):
         recommendations = self._recommend_by_main_categories(
             garments=all_garments,
             main_categories=main_cats,
+            sub_categories=sub_cats,
         )
 
         req_serializer = RecommendationRequestSerializer(req)
@@ -294,7 +297,7 @@ class RecommendStyleFromCelebrityView(APIView):
             status=status.HTTP_200_OK,
         )
 
-    def _recommend_by_main_categories(self, garments, main_categories):
+    def _recommend_by_main_categories(self, garments, main_categories, sub_categories):
         def cos(a, b):
             if not a or not b or len(a) != len(b):
                 return 0.0
@@ -305,18 +308,50 @@ class RecommendStyleFromCelebrityView(APIView):
                 return 0.0
             return dot / (na * nb)
 
+        sub_map = {}
+        for idx, cat in enumerate(main_categories):
+            if idx < len(sub_categories):
+                sub_map[cat] = sub_categories[idx]
+            else:
+                sub_map[cat] = None
+
         results = []
 
         for cat in main_categories:
-            ref_items = [g for g in garments if g.get("category") == cat]
+            desired_sub = sub_map.get(cat)
+
+            ref_items = []
+            if desired_sub:
+                ref_items = [
+                    g
+                    for g in garments
+                    if g.get("category") == cat and g.get("sub_category") == desired_sub
+                ]
 
             if not ref_items:
-                results.append({"category": cat, "items": []})
+                ref_items = [g for g in garments if g.get("category") == cat]
+
+            if not ref_items and garments:
+                ref_items = garments
+
+            if not ref_items:
+                results.append(
+                    {
+                        "category": cat,
+                        "sub_category": desired_sub,
+                        "items": [],
+                    }
+                )
                 continue
 
             db_items = ClothesAnalysis.objects.filter(
                 category=cat
             ).exclude(vector__isnull=True).select_related("clothes")
+
+            if desired_sub:
+                filtered = db_items.filter(sub_category=desired_sub)
+                if filtered.exists():
+                    db_items = filtered
 
             scored = []
 
@@ -342,6 +377,12 @@ class RecommendStyleFromCelebrityView(APIView):
                     }
                 )
 
-            results.append({"category": cat, "items": items})
+            results.append(
+                {
+                    "category": cat,
+                    "sub_category": desired_sub,
+                    "items": items,
+                }
+            )
 
         return results
