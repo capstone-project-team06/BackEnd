@@ -315,7 +315,6 @@ class RecommendStyleFromCelebrityView(APIView):
             else:
                 sub_map[cat] = None
 
-        # 전체 garments의 평균 벡터(코디 전체 분위기)
         all_vecs = []
         for g in garments:
             v = g.get("vector") or []
@@ -338,7 +337,6 @@ class RecommendStyleFromCelebrityView(APIView):
         for cat in main_categories:
             desired_sub = sub_map.get(cat)
 
-            # 1순위: category + sub_category
             ref_vectors = []
             if desired_sub:
                 for g in garments:
@@ -347,7 +345,6 @@ class RecommendStyleFromCelebrityView(APIView):
                         if isinstance(v, list) and v:
                             ref_vectors.append(v)
 
-            # 2순위: category만 같은 garment
             if not ref_vectors:
                 for g in garments:
                     if g.get("category") == cat:
@@ -355,7 +352,6 @@ class RecommendStyleFromCelebrityView(APIView):
                         if isinstance(v, list) and v:
                             ref_vectors.append(v)
 
-            # 3순위: 카테고리 자체가 없으면 코디 전체 평균 벡터 사용
             if not ref_vectors and avg_vec:
                 ref_vectors = [avg_vec]
 
@@ -394,15 +390,17 @@ class RecommendStyleFromCelebrityView(APIView):
                 ca_vec = ca.vector or []
                 if not isinstance(ca_vec, list) or not ca_vec:
                     continue
-                best_sim = 0.0
+
+                best_sim_for_item = -1.0
                 for rv in ref_vectors:
                     if len(rv) != len(ca_vec):
                         continue
                     s = cos(rv, ca_vec)
-                    if s > best_sim:
-                        best_sim = s
-                if best_sim > 0:
-                    scored.append((best_sim, ca))
+                    if s > best_sim_for_item:
+                        best_sim_for_item = s
+
+                if best_sim_for_item > -1.0:
+                    scored.append((best_sim_for_item, ca))
 
             scored.sort(key=lambda x: x[0], reverse=True)
             top2 = scored[:2]
