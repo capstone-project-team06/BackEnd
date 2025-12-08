@@ -315,26 +315,51 @@ class RecommendStyleFromCelebrityView(APIView):
             else:
                 sub_map[cat] = None
 
+        # 전체 garments의 평균 벡터(코디 전체 분위기)
+        all_vecs = []
+        for g in garments:
+            v = g.get("vector") or []
+            if isinstance(v, list) and v:
+                all_vecs.append(v)
+
+        avg_vec = None
+        if all_vecs:
+            dim = len(all_vecs[0])
+            sums = [0.0] * dim
+            for v in all_vecs:
+                if len(v) != dim:
+                    continue
+                for i in range(dim):
+                    sums[i] += v[i]
+            avg_vec = [s / len(all_vecs) for s in sums]
+
         results = []
 
         for cat in main_categories:
             desired_sub = sub_map.get(cat)
 
-            ref_items = []
+            # 1순위: category + sub_category
+            ref_vectors = []
             if desired_sub:
-                ref_items = [
-                    g
-                    for g in garments
-                    if g.get("category") == cat and g.get("sub_category") == desired_sub
-                ]
+                for g in garments:
+                    if g.get("category") == cat and g.get("sub_category") == desired_sub:
+                        v = g.get("vector") or []
+                        if isinstance(v, list) and v:
+                            ref_vectors.append(v)
 
-            if not ref_items:
-                ref_items = [g for g in garments if g.get("category") == cat]
+            # 2순위: category만 같은 garment
+            if not ref_vectors:
+                for g in garments:
+                    if g.get("category") == cat:
+                        v = g.get("vector") or []
+                        if isinstance(v, list) and v:
+                            ref_vectors.append(v)
 
-            if not ref_items and garments:
-                ref_items = garments
+            # 3순위: 카테고리 자체가 없으면 코디 전체 평균 벡터 사용
+            if not ref_vectors and avg_vec:
+                ref_vectors = [avg_vec]
 
-            if not ref_items:
+            if not ref_vectors:
                 results.append(
                     {
                         "category": cat,
@@ -348,6 +373,16 @@ class RecommendStyleFromCelebrityView(APIView):
                 category=cat
             ).exclude(vector__isnull=True).select_related("clothes")
 
+            if not db_items.exists():
+                results.append(
+                    {
+                        "category": cat,
+                        "sub_category": desired_sub,
+                        "items": [],
+                    }
+                )
+                continue
+
             if desired_sub:
                 filtered = db_items.filter(sub_category=desired_sub)
                 if filtered.exists():
@@ -355,12 +390,19 @@ class RecommendStyleFromCelebrityView(APIView):
 
             scored = []
 
-            for ref in ref_items:
-                ref_vec = ref.get("vector") or []
-                for ca in db_items:
-                    sim = cos(ref_vec, ca.vector or [])
-                    if sim > 0:
-                        scored.append((sim, ca))
+            for ca in db_items:
+                ca_vec = ca.vector or []
+                if not isinstance(ca_vec, list) or not ca_vec:
+                    continue
+                best_sim = 0.0
+                for rv in ref_vectors:
+                    if len(rv) != len(ca_vec):
+                        continue
+                    s = cos(rv, ca_vec)
+                    if s > best_sim:
+                        best_sim = s
+                if best_sim > 0:
+                    scored.append((best_sim, ca))
 
             scored.sort(key=lambda x: x[0], reverse=True)
             top2 = scored[:2]
