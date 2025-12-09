@@ -228,3 +228,6 @@ DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
 # AI 서버 URL (FastAPI)
 AI_SERVER_URL = "http://127.0.0.1:8001"  # 실제 AI 서버 포트에 맞게 수정
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
