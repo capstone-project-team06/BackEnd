@@ -74,7 +74,7 @@ def log_face_shape(data: dict):
 # ===============================
 # Main classifier
 # ===============================
-def classify(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
+def classify_face_shape(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
     """얼굴형 분류: round/square/oval/oblong/heart/unknown"""
 
     rgb = to_rgb(bgr)
@@ -125,20 +125,31 @@ def classify(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
     elif J < 0.90 and R >= 1.20:
         fs = "heart"
 
-    # 3) R이 비교적 낮은 쪽 (짧고 넓은 얼굴)
-    elif R <= 1.25:
-        if 0.93 <= J <= 1.07:
+    # 3) 비교적 짧고 넓은 얼굴 (R가 작은 구간)
+    elif R <= 1.14:
+        # R이 짧고, 턱/이마 폭이 거의 비슷하거나 조금 넓은 경우 → round
+        if J >= 1.11:
             fs = "round"
-        elif J > 1.07:
-            fs = "square"
-        # 그 외는 oval 유지
+        elif J >= 1.06:
+            # 살짝 각은 있지만, 아직은 oval 느낌 유지
+            fs = "oval"
+        else:
+            # 턱이 이마보다 확 좁으면 동그랗게 보이는 쪽으로
+            fs = "round"
 
-    # 4) 중간 길이 (1.25 < R < 1.40)
+    # 4) 중간 길이 (1.14 < R <= 1.22)
+    elif R <= 1.22:
+        # 이 구간에서는 턱이 이마보다 조금만 넓어도 사각 느낌이 강해짐
+        if J >= 1.07:
+            fs = "square"
+        else:
+            fs = "oval"
+
+    # 5) 그보다 긴 얼굴 (1.22 < R < 1.40)
     else:
         if J >= 1.10:
             fs = "square"
-        # 나머지는 oval 유지
-
+        # 나머지는 기본 oval 유지
 
     # ===============================
     # Output dict

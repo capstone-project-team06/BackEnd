@@ -25,12 +25,15 @@ Image Search Adapter (SerpAPI Bing / Google Images)
   "editorial_only": bool,# 휴리스틱(언론/보도성) True/False
 }
 """
-
 from __future__ import annotations
 import os, time, json
 from typing import List, Dict, Any, Iterable, Tuple
 from urllib.parse import urlparse, urlunparse, urlencode, parse_qsl
 import requests
+import re
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # -----------------------------
 # Config
@@ -138,15 +141,36 @@ def _normalize_item(
 # -----------------------------
 def build_query(celeb_name: str, needs: List[str] | Tuple[str,...]) -> str:
     """
-    예) celeb_name="아이유", needs=["여름","블레이저"] →
-        "아이유 여름 블레이저 코디 착장 패션"
+    예) celeb_name="아일릿 원희", needs=["여름", "블레이저"] →
+        "아일릿 원희 여름 블레이저 코디 착장 패션 스타일 룩"
+
+    예) needs=["블레이저, 여름"] 처럼 한 문자열 안에 콤마가 섞여 있어도
+        "여름 블레이저" 식으로 정규화해서 사용.
     """
-    need_txt = " ".join([n for n in needs if n])
+    # 1) needs 리스트 안의 문자열을 콤마/공백 기준으로 전부 쪼개서 토큰화
+    tokens: List[str] = []
+    for n in needs:
+        if not n:
+            continue
+        parts = re.split(r"[,\s]+", n)
+        for p in parts:
+            p = p.strip()
+            if p:
+                tokens.append(p)
+
+    # 2) 순서 유지 + 중복 제거
+    seen = set()
+    clean_needs: List[str] = []
+    for t in tokens:
+        if t not in seen:
+            seen.add(t)
+            clean_needs.append(t)
+
+    need_txt = " ".join(clean_needs)
+
     base = f"{celeb_name} {need_txt}".strip()
-    # 한국 검색어 위주로 tail 변경
     tail = "코디 착장 패션 스타일 룩"
     return f"{base} {tail}".strip()
-
 # -----------------------------
 # SerpAPI provider
 # -----------------------------

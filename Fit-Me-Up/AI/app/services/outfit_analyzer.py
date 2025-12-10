@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import base64
+import requests
 import os, json
 from typing import List, Dict, Any
 
@@ -15,6 +17,24 @@ VISION_MODEL = os.getenv("OPENAI_VISION_MODEL", "gpt-4o")
 
 client = OpenAI()
 
+def _url_to_data_image(url: str, timeout: float = 8.0) -> str | None:
+    """
+    원격 이미지 URL -> data:image/...;base64,... 형태로 변환.
+    OpenAI 서버가 직접 다운로드하지 않게 하기 위함.
+    """
+    try:
+        r = requests.get(url, timeout=timeout, headers={"User-Agent": "style-pipeline/1.0"})
+        r.raise_for_status()
+        content_type = r.headers.get("Content-Type", "image/jpeg")
+        if not content_type.startswith("image/"):
+            content_type = "image/jpeg"
+        b64 = base64.b64encode(r.content).decode("utf-8")
+        return f"data:{content_type};base64,{b64}"
+    except Exception as e:
+        # 디버그용으로만 출력
+        print(f"[outfit_analyzer] _url_to_data_image ERROR url={url}, err={e}")
+        return None
+
 
 def analyze_outfit_with_gpt(image_urls: List[str]) -> Dict[str, Any]:
     """
@@ -25,20 +45,26 @@ def analyze_outfit_with_gpt(image_urls: List[str]) -> Dict[str, Any]:
         image_urls: 분석할 이미지 URL 리스트
 
     반환 예시(자유도 있음, 지금은 대략 이런 구조를 가정):
+    최종 스키마:
     {
       "looks": [
         {
-          "image_url": "...",
-          "overall_style": "미니멀 캐주얼",
-          "items": [
-            {"category": "outer", "name": "베이지 싱글 블레이저", "color": "베이지", "fit": "슬림"},
-            {"category": "top",   "name": "화이트 티셔츠",      "color": "화이트"},
-            ...
-          ]
-        },
-        ...
+          "overall_style": "minimal casual / formal office look / street / romantic 등",
+          "garments": [
+            {
+              "name": "...",
+              "category": "top|bottom|outer|dress|shoes|bag|accessory",
+              "sub_category": "tshirt|shirt|jeans|skirt|blazer ...",
+              "style": "minimal|street|classic|romantic|hiphop|cityboy|amekaji|formal",
+              "color": "white|black|gray|navy|beige|brown|blue|red|green ...",
+              "fit": "slim|regular|oversized|relaxed",
+              "season": "spring|summer|fall|winter|all"
+            }
+          ],
+          "image_url": "원래 입력 이미지 URL (파이썬에서 덮어씀)"
+        }
       ],
-      "summary": "블레이저를 활용한 여름용 스마트 캐주얼 코디들...",
+      "summary": "전체 코디 특징 요약"
     }
     """
     if not image_urls:
@@ -107,6 +133,7 @@ def analyze_outfit_with_gpt(image_urls: List[str]) -> Dict[str, Any]:
     # user 메시지 content 구성
     user_content: List[Dict[str, Any]] = []
 
+    '''
     # 1) 텍스트 설명
     user_text = (
         "다음 이미지들에 대해 위에서 설명한 JSON 스키마에 맞춰 분석해줘.\n"
@@ -122,7 +149,37 @@ def analyze_outfit_with_gpt(image_urls: List[str]) -> Dict[str, Any]:
         user_content.append({
             "type": "image_url",
             "image_url": {"url": url}
+        })'''
+        
+    # 1) 텍스트 설명
+    user_text = (
+        "다음 이미지들에 대해 위에서 설명한 JSON 스키마에 맞춰 분석해줘.\n"
+        "이미지들은 모두 같은 연예인(또는 비슷한 사람)의 코디 참고용이야.\n"
+        "각 look마다 image_url 필드에 해당 이미지 URL을 그대로 넣어줘."
+    )
+    user_content.append({"type": "text", "text": user_text})
+
+    # 2) 이미지들을 data:image/...;base64 로 변환해서 추가
+    valid_image_count = 0
+    for url in image_urls:
+        if not url:
+            continue
+
+        data_url = _url_to_data_image(url)
+        if not data_url:
+            # 다운로드 실패한 URL은 스킵
+            continue
+
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": data_url}
         })
+        valid_image_count += 1
+
+    if valid_image_count == 0:
+        # 이미지 하나도 못 가져왔으면 안전하게 fallback
+        return {"looks": [], "summary": "no valid images"}
+
 
     # GPT 호출
     resp = client.chat.completions.create(
@@ -162,6 +219,7 @@ def analyze_outfit_with_gpt(image_urls: List[str]) -> Dict[str, Any]:
                 look["image_url"] = image_urls[idx]
 
     return data
+
 
 
 # --------------------------------------------------

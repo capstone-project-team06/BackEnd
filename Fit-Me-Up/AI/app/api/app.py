@@ -24,7 +24,7 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, HttpUrl
 
@@ -42,6 +42,10 @@ from ..services.outfit_analyzer import analyze_outfit_with_gpt
 from ..services.url_analyzer import analyze_image_from_url
 from ..services.image_searcher import search_reference_images
 from ..services.outfit_embedding import style_vec_from_dict
+from ..services.quick_web_outfit import quick_outfit_from_web
+from ..services.appearance_gpt import analyze_image_from_url_gpt
+from ..services.feature_builder import build_feature_vector
+
 
 from ..api.dto import UserAnalysisDTO, UserAnalyzeResponse, ClothesAnalyzeRequest, ClothesAnalyzeResponse, GarmentDTO, LookDTO, StyleAnalyzeResponse, StyleAnalyzeRequest
 
@@ -182,6 +186,7 @@ async def ai_clothes_analyze(payload: ClothesAnalyzeRequest):
 # 3) POST /ai/style/analyze
 #    레퍼런스 코디 이미지들 → look/garment 스타일 + 6D 벡터
 # ======================================================
+
 @app.post("/ai/style/analyze", response_model=StyleAnalyzeResponse)
 async def ai_style_analyze(payload: StyleAnalyzeRequest):
     """
@@ -208,7 +213,7 @@ async def ai_style_analyze(payload: StyleAnalyzeRequest):
         )
 
     # 2) GPT Vision 분석
-    outfit_json = analyze_outfit_with_gpt([image_urls[0]]) # 첫 번째 레퍼런스만 분석하게 변경
+    outfit_json = analyze_outfit_with_gpt(image_urls) # 첫 번째 레퍼런스만 분석하게 변경
 
     looks = outfit_json.get("looks", []) or []
     summary = outfit_json.get("summary", "")
@@ -247,48 +252,165 @@ async def ai_style_analyze(payload: StyleAnalyzeRequest):
         looks=final_looks,
         summary=summary,
     )
+    
+    
+
 
 # ======================================================
 # 디버깅용 기존 API (원하면 그대로 유지)
 # ======================================================
+# ======================================================
+# 4) POST /ai/style/analyze/quick
+#    quick_web_outfit 파이프라인 (web_search + vision 통합)
+# ======================================================
+@app.post("/ai/style/analyze/quick", response_model=StyleAnalyzeResponse)
+async def ai_style_analyze_quick(payload: StyleAnalyzeRequest):
+    """
+    A 파이프라인:
+      - quick_web_outfit 이 web_search + 이미지 선택 + 스타일 분석을 한 번에 수행
+      - 반환된 looks 중에서 needs에 가장 잘 맞는 1개만 선택
+      - 각 garment에 6D 스타일 벡터를 붙여서 반환
+    """
+
+    # 1) quick_web_outfit 호출 (연예인 + 니즈 기반)
+    raw = quick_outfit_from_web(
+        celeb_name=payload.celeb_name,
+        needs=payload.needs,
+    )
+    # raw 예:
+    # {
+    #   "looks": [
+    #       {
+    #           "overall_style": "...",
+    #           "garments": [...],
+    #           "image_url": "...",
+    #           "source_url": "..."
+    #       },
+    #       ...
+    #   ],
+    #   "summary": "..."
+    # }
+
+    # 2) needs 기준으로 "가장 잘 맞는 look 1개"만 선택
+    looks = raw.get("looks") or [][:0] # 1개만 보여주게 함 나중에[:#] 여기 수정가능
+    summary = raw.get("summary", "")
+
+    final_looks: List[LookDTO] = []
+    input_images: List[str] = []
+
+    for look in looks:
+        img_url = look.get("image_url") or ""
+        if img_url:
+            input_images.append(img_url)
+
+        garments: List[GarmentDTO] = []
+        for g in look.get("garments", []) or []:
+            vec = style_vec_from_dict(g)
+
+            garments.append(
+                GarmentDTO(
+                    name=g.get("name") or "",
+                    category=g.get("category") or "",
+                    sub_category=g.get("sub_category"),
+                    style=g.get("style"),
+                    color=g.get("color"),
+                    fit=g.get("fit"),
+                    season=g.get("season"),
+                    vector=vec,
+                )
+            )
+
+        final_looks.append(
+            LookDTO(
+                image_url=img_url,
+                overall_style=look.get("overall_style"),
+                garments=garments,
+            )
+        )
+
+    return StyleAnalyzeResponse(
+        input_images=input_images,
+        looks=final_looks,
+        summary=summary,
+    )
+    
+    
+@app.post("/user/analyze-url-multi-gpt", response_model=UserAnalyzeResponse)
+async def analyze_user_url_multi_gpt(payload: AnalyzeUserUrlMultiRequest):
+    """
+    GPT Vision 기반 버전:
+      - face_image_url → face_shape / skin_tone (body는 무시)
+      - body_image_url → body_shape
+      - build_feature_vector 로 3개 합쳐서 vector 생성
+    """
+
+    # 1) 얼굴/피부 (얼굴 위주 샷이니까 body는 무시해도 됨)
+    face_data = analyze_image_from_url_gpt(payload.face_image_url)
+    if not face_data:
+        raise HTTPException(status_code=400, detail="Failed to analyze face image with GPT.")
+
+    face_res = face_data["face"]
+    skin_res = face_data["skin"]
+
+    # 2) 전신 (body_shape만 사용)
+    body_data = analyze_image_from_url_gpt(payload.body_image_url)
+    if not body_data:
+        raise HTTPException(status_code=400, detail="Failed to analyze body image with GPT.")
+
+    body_res = body_data["body"]
+
+    # 3) vector 생성 (기존과 동일한 인터페이스 사용)
+    vec = build_feature_vector(face_res, body_res, skin_res)
+
+    analysis = UserAnalysisDTO(
+        id=None,
+        user_id=None,
+        face_shape=face_res.get("face_shape", "unknown"),
+        body_shape=body_res.get("body_shape", "unknown"),
+        skin_tone=skin_res.get("skin_tone", "unknown"),
+        vector=vec,
+    )
+
+    return UserAnalyzeResponse(analysis=analysis)
+
 
 @app.post("/face")
 async def api_face(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    res, _ = face_mod.classify(bgr, return_debug=False)
+    res, _ = face_mod.classify_face_shape(bgr, return_debug=False)
     return JSONResponse(res)
 
 
 @app.post("/body")
 async def api_body(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    res, _ = body_mod.classify(bgr, return_debug=False)
+    res, _ = body_mod.classify_body_shape(bgr, return_debug=False)
     return JSONResponse(res)
 
 
 @app.post("/skin")
 async def api_skin(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    res, _ = skin_mod.classify(bgr, return_debug=False)
+    res, _ = skin_mod.classify_skin_tone(bgr, return_debug=False)
     return JSONResponse(res)
 
 
 @app.post("/face/overlay")
 async def face_overlay(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    _, dbg = face_mod.classify(bgr, return_debug=True)
+    _, dbg = face_mod.classify_face_shape(bgr, return_debug=True)
     return Response(content=dbg, media_type="image/png")
 
 
 @app.post("/body/overlay")
 async def body_overlay(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    _, dbg = body_mod.classify(bgr, return_debug=True)
+    _, dbg = body_mod.classify_body_shape(bgr, return_debug=True)
     return Response(content=dbg, media_type="image/png")
 
 
 @app.post("/skin/overlay")
 async def skin_overlay(image: UploadFile = File(...)):
     bgr = load_image_bgr_from_bytes(await image.read())
-    _, dbg = skin_mod.classify(bgr, return_debug=True)
+    _, dbg = skin_mod.classify_skin_tone(bgr, return_debug=True)
     return Response(content=dbg, media_type="image/png")
