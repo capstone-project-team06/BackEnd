@@ -16,7 +16,7 @@ def draw_debug(bgr: np.ndarray, bbox) -> np.ndarray:
     cv2.circle(out, (cx, cy), 4, (0, 0, 255), -1)
     return out
 
-def classify(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
+def classify_skin_tone(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
     """
     피부톤 분류: depth(light/medium/deep) + undertone(warm/cool/neutral)
     """
@@ -50,18 +50,21 @@ def classify(bgr, return_debug: bool=False) -> Tuple[Dict[str, Any], bytes]:
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     L, a, b = lab[:,:,0].mean(), lab[:,:,1].mean(), lab[:,:,2].mean()
     H, S, V = hsv[:,:,0].mean(), hsv[:,:,1].mean(), hsv[:,:,2].mean()
-
-    # ----- depth(밝기) -----
+    
+    # ----- depth(밝기) ----- 
     depth = "light" if L >= 180 else ("medium" if L >= 130 else "deep")
 
-    # ----- undertone (3-1 전역 threshold 버전) -----
-    da = a - 128
-    db = b - 128
+    # ----- undertone (Lab 기반 상대 warm/cool 스코어) -----
+    da = a - 138.0
+    db = b - 136.0
 
-    # 노랑/빨강 쪽으로 치우친 정도 (웜톤 점수)
-    score = da + 0.8 * db
+    # 노랑(b)이 붉음(a)에 비해 얼마나 강한지 → warm / cool 지표
+    # score > 0  → 노란기가 상대적으로 강함 (warm 쪽)
+    # score < 0  → 노란기보다 붉음이 상대적으로 강함 / 노란기가 적음 (cool 쪽)
+    score = db - 0.6 * da
 
-    T = 6.0  # 임계값: 나중에 데이터 보면서 5~8 사이에서 조정
+    # 임계값: |score|가 너무 작으면 neutral
+    T = 3.0
 
     if score > T:
         undertone = "warm"
