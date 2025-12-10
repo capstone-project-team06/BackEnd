@@ -426,3 +426,38 @@ class RecommendStyleFromCelebrityView(APIView):
             )
 
         return results
+    
+
+class DebugCelebrityStyleProxyView(APIView):
+    #테스트용
+
+    permission_classes = [permissions.AllowAny]  # 필요하면 IsAuthenticated로 바꿔
+
+    def post(self, request):
+        celeb_name = request.data.get("celeb_name")
+        needs = request.data.get("needs") or [f"{celeb_name} 스타일 테스트"]
+
+        if not celeb_name:
+            return Response(
+                {"detail": "celeb_name 필드는 필수입니다."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload = {
+            "celeb_name": celeb_name,
+            "needs": needs,
+            "max_results": 10,
+            "max_analyze_images": 3,
+        }
+
+        try:
+            ai_url = f"{settings.AI_SERVER_URL}/ai/style/analyze"
+            ai_resp = requests.post(ai_url, json=payload, timeout=120)
+            ai_resp.raise_for_status()
+        except Exception as e:
+            return Response(
+                {"detail": "AI 서버 호출 실패", "error": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response(ai_resp.json(), status=ai_resp.status_code)
